@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "max_bitrate_kbps": 100000,
+  "port": 47989,
+  "bind_address": "0.0.0.0",
+  "name": "Cemu GamePad",
+  "input_timeout_ms": 1500,
+  "local_gamepad_audio": true,
+  "absolute_pointer_touch": true,
+  "trace_timeline": false,
+  "allow_unverified_backend": false
+}

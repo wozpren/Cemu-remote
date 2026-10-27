@@ -17,6 +17,9 @@
 #include "Cafe/OS/libs/erreula/erreula.h"
 #include "input/InputManager.h"
 #include "Cafe/OS/libs/swkbd/swkbd.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "GamePadExtension.h"
+#endif
 
 uint32 prevScissorX = 0;
 uint32 prevScissorY = 0;
@@ -981,6 +984,10 @@ void LatteRenderTarget_itHLECopyColorBufferToScanBuffer(MPTR colorBufferPtr, uin
 	{
 		return;
 	}
+	#ifdef CEMU_GAMEPAD_EXTENSION
+	if ((renderTarget & RENDER_TARGET_DRC) && RemoteGamePad::Enabled())
+		RemoteGamePad::Capture(texView);
+	#endif
 
 	auto getVPADScreenActive = [](size_t n) -> std::pair<bool, bool> {
 		auto controller = InputManager::instance().get_vpad_controller(n);

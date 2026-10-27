@@ -3,6 +3,9 @@
 #include "audio/IAudioAPI.h"
 #include "config/CemuConfig.h"
 #include "Common/CafeStaticVar.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "GamePadExtension.h"
+#endif
 
 namespace snd_core
 {
@@ -300,6 +303,17 @@ namespace snd_core
 	void AIInitDRCDMA(sint16* sampleData, sint32 size)
 	{
 		sint32 sampleCount = size / sizeof(sint16); // sample count in total (summed up for all channels)
+		#ifdef CEMU_GAMEPAD_EXTENSION
+		// AX has already resampled __AXDRCBuffer48. Copy the current 3 ms
+		// big-endian DMA block before local four-block playback aggregation.
+		const uint32 remoteChannels = __AXMode[AX_DEV_DRC] == AX_MODE_6CH ? 6 : 2;
+		std::array<sint16, AX_SAMPLES_PER_3MS_48KHZ * 6> remoteSamples;
+		if (sampleCount >= 0 && sampleCount <= remoteSamples.size())
+		{
+			for (sint32 i = 0; i < sampleCount; ++i) remoteSamples[i] = _swapEndianS16(sampleData[i]);
+			RemoteGamePad::Audio(std::span<const sint16>(remoteSamples.data(), sampleCount), remoteChannels, RemoteGamePad::Now());
+		}
+		#endif
 
 		if (sndGeneric.initParam.frameLength != 0)
 		{
@@ -318,7 +332,11 @@ namespace snd_core
 		tempDRCAudioBlockCounter++;
 		if (tempDRCAudioBlockCounter == AX_FRAMES_PER_GROUP)
 		{
-			if (g_padAudio)
+			if (g_padAudio
+			#ifdef CEMU_GAMEPAD_EXTENSION
+				&& RemoteGamePad::LocalAudio()
+			#endif
+			)
 				g_padAudio->FeedBlock(tempDRCChannelData);
 
 			tempDRCAudioBlockCounter = 0;

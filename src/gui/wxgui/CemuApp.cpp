@@ -1,4 +1,7 @@
 #include "wxgui/CemuApp.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "GamePadExtension.h"
+#endif
 #include "wxCemuConfig.h"
 #include "wxgui/MainWindow.h"
 #include "wxgui/wxgui.h"
@@ -342,6 +345,9 @@ bool CemuApp::OnInit()
 	SDLControllerProvider::InitSDL();
 #endif
 	CemuCommonInit();
+#ifdef CEMU_GAMEPAD_EXTENSION
+	RemoteGamePad::Initialize();
+#endif
 
 #if BOOST_OS_MACOS
 	m_sdlEventPumpTimer = new wxTimer(this);
@@ -402,6 +408,9 @@ int CemuApp::OnExit()
 	wxApp::OnExit();
 	wxTheClipboard->Flush();
 	InputManager::instance().Shutdown();
+#ifdef CEMU_GAMEPAD_EXTENSION
+	RemoteGamePad::Shutdown();
+#endif
 	int retValue = 0;
 	if (auto r = CafeSystem::GetForegroundTitleReturnStatus(); (LaunchSettings::GetLoadFile() || LaunchSettings::GetLoadTitleID()) && r)
 		retValue = *r;

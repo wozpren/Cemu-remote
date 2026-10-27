@@ -16,6 +16,9 @@
 #include "input/api/Keyboard/KeyboardControllerProvider.h"
 #include "input/api/DSU/DSUControllerProvider.h"
 #include "input/api/GameCube/GameCubeControllerProvider.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "RemoteControllerProvider.h"
+#endif
 
 #include "input/emulated/VPADController.h"
 #include "input/emulated/WPADController.h"

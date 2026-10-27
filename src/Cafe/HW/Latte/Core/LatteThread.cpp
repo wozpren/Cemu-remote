@@ -18,6 +18,9 @@
 #include "config/ActiveSettings.h"
 
 #include "Cafe/CafeSystem.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "GamePadExtension.h"
+#endif
 
 LatteGPUState_t LatteGPUState = {};
 
@@ -95,6 +98,9 @@ bool LatteHandleOSScreen_DRC()
 	const uint32 bufferIndexDRC = bufferDisplayDRC;
 
 	LatteTexture_ReloadData(osScreenDRCTex[bufferIndexDRC]->baseTexture);
+	#ifdef CEMU_GAMEPAD_EXTENSION
+	if (RemoteGamePad::Enabled()) RemoteGamePad::Capture(osScreenDRCTex[bufferIndexDRC]);
+	#endif
 
 	// GamePad screen
 	LatteRenderTarget_copyToBackbuffer(osScreenDRCTex[bufferIndexDRC]->baseTexture->baseView, true);

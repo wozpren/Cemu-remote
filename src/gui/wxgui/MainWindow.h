@@ -3,6 +3,7 @@
 #include <wx/wx.h>
 #include <wx/dataview.h>
 #include <wx/infobar.h>
+#include "WindowedFullscreenFrame.h"
 
 #include "wxgui/PadViewFrame.h"
 #include "wxgui/MemorySearcherTool.h"
@@ -52,7 +53,7 @@ private:
 	INITIATED_BY m_initiatedBy;
 };
 
-class MainWindow : public wxFrame, public CafeSystem::SystemImplementation
+class MainWindow : public WindowedFullscreenFrame, public CafeSystem::SystemImplementation
 {
 	friend class CemuApp;
 

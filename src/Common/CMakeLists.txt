@@ -58,6 +58,10 @@ endif()
 # CemuCommon always builts the precompiled header
 target_precompile_headers(CemuCommon PRIVATE precompiled.h)
 target_include_directories(CemuCommon PUBLIC "../")
+if(ENABLE_GAMEPAD_EXTENSION)
+    target_include_directories(CemuCommon PUBLIC "${CMAKE_SOURCE_DIR}/extensions/gamepad/adapter")
+    target_sources(CemuCommon PRIVATE "${CMAKE_SOURCE_DIR}/extensions/gamepad/adapter/GamePadExtension.cpp")
+endif()
 
 target_link_libraries(CemuCommon PRIVATE
 	glm::glm

@@ -45,6 +45,9 @@
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 #include <stdio.h>
+#include <memory>
+#include <stdexcept>
+#include <vector>
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
 
 
@@ -942,6 +945,72 @@ void ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_count)
     ImGui_ImplVulkanH_DestroyWindowRenderBuffers(v->Device, &g_MainWindowRenderBuffers, v->Allocator);
     g_VulkanInitInfo.MinImageCount = min_image_count;
 }
+
+#ifdef CEMU_GAMEPAD_EXTENSION
+struct ImGui_ImplVulkan_Offscreen
+{
+    VkPipeline pipeline{};
+    std::vector<ImGui_ImplVulkanH_FrameRenderBuffers> slots;
+};
+
+ImGui_ImplVulkan_Offscreen* ImGui_ImplVulkan_CreateOffscreen(VkRenderPass render_pass, uint32_t slots)
+{
+    auto target = std::make_unique<ImGui_ImplVulkan_Offscreen>();
+    target->slots.resize(slots);
+    auto savedPipeline = g_Pipeline;
+    auto savedPass = g_RenderPass;
+    g_RenderPass = render_pass;
+    g_Pipeline = VK_NULL_HANDLE;
+    try
+    {
+        ImGui_ImplVulkan_CreateDeviceObjects();
+        target->pipeline = g_Pipeline;
+        g_Pipeline = savedPipeline;
+        g_RenderPass = savedPass;
+        if (!target->pipeline) throw std::runtime_error("Could not create GamePad overlay pipeline");
+        return target.release();
+    }
+    catch (...)
+    {
+        g_Pipeline = savedPipeline;
+        g_RenderPass = savedPass;
+        throw;
+    }
+}
+
+void ImGui_ImplVulkan_RenderOffscreen(ImGui_ImplVulkan_Offscreen* target, uint32_t slot, ImDrawData* data, VkCommandBuffer command)
+{
+    auto savedPipeline = g_Pipeline;
+    auto savedBuffers = g_MainWindowRenderBuffers;
+    auto savedCount = g_VulkanInitInfo.ImageCount;
+    // Each remote lease owns its vertex/index buffers. Reusing the local
+    // swapchain ring here could overwrite GPU data when TV, pad and remote
+    // overlays are drawn in the same emulator frame.
+    g_Pipeline = target->pipeline;
+    g_MainWindowRenderBuffers = {0, 1, &target->slots.at(slot)};
+    g_VulkanInitInfo.ImageCount = 1;
+    try { ImGui_ImplVulkan_RenderDrawData(data, command); }
+    catch (...)
+    {
+        g_Pipeline = savedPipeline;
+        g_MainWindowRenderBuffers = savedBuffers;
+        g_VulkanInitInfo.ImageCount = savedCount;
+        throw;
+    }
+    g_Pipeline = savedPipeline;
+    g_MainWindowRenderBuffers = savedBuffers;
+    g_VulkanInitInfo.ImageCount = savedCount;
+}
+
+void ImGui_ImplVulkan_DestroyOffscreen(ImGui_ImplVulkan_Offscreen* target)
+{
+    if (!target) return;
+    for (auto& slot : target->slots)
+        ImGui_ImplVulkanH_DestroyFrameRenderBuffers(g_VulkanInitInfo.Device, &slot, g_VulkanInitInfo.Allocator);
+    vkDestroyPipeline(g_VulkanInitInfo.Device, target->pipeline, g_VulkanInitInfo.Allocator);
+    delete target;
+}
+#endif
 
 
 //-------------------------------------------------------------------------

@@ -1,4 +1,7 @@
 #include "input/emulated/VPADController.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "RemoteController.h"
+#endif
 #include "input/api/Controller.h"
 #ifdef HAS_SDL
 #include "input/api/SDL/SDLController.h"
@@ -48,6 +51,13 @@ enum ControllerVPADMapping2 : uint32
 
 void VPADController::VPADRead(VPADStatus_t& status, const BtnRepeat& repeat)
 {
+#ifdef CEMU_GAMEPAD_EXTENSION
+	const auto physicalSources = GetControllersSnapshot();
+	const bool remoteSource = std::any_of(physicalSources.begin(), physicalSources.end(), [](const auto& source) { return source->api() == InputAPI::RemoteGamePad; });
+	// Consume one remote edge at the emulated VPAD read. UI/controller-preview
+	// reads observe the latest state and cannot steal short presses from games.
+	RemoteGamePad::InputReadScope remoteInputScope(remoteSource);
+#endif
 	controllers_update_states();
 	m_mic_active = false;
 	m_screen_active = false;
@@ -192,6 +202,25 @@ void VPADController::update_touch(VPADStatus_t& status)
 	// NGDK (Neko Game Development Kit 2) games (e.g. Mysterios Cities of Gold) rely on x/y remaining intact after touch is released
 	status.tpData.x = (uint16)m_last_touch_position.x;
 	status.tpData.y = (uint16)m_last_touch_position.y;
+	#ifdef CEMU_GAMEPAD_EXTENSION
+	for (const auto& source : GetControllersSnapshot())
+	{
+		if (source->api() != InputAPI::RemoteGamePad) continue;
+		auto remote = RemoteGamePad::ReadControllerInput();
+		// A bound remote source owns touch even when released or disconnected;
+		// local mouse coordinates must not become an implicit second source.
+		if (remote.connected && remote.touching)
+		{
+			status.tpData.touch = kTpTouchOn;
+			status.tpData.validity = kTpValid;
+			status.tpData.x = (uint16)(remote.touch_x * 3883.f + 92.f);
+			status.tpData.y = (uint16)(4095.f - remote.touch_y * 3694.f - 254.f);
+			m_last_touch_position = glm::ivec2{status.tpData.x, status.tpData.y};
+		}
+		status.tpProcessed1 = status.tpProcessed2 = status.tpData;
+		return;
+	}
+	#endif
 
 	auto& instance = InputManager::instance();
 	bool pad_view;
@@ -281,6 +310,10 @@ void VPADController::update_motion(VPADStatus_t& status)
 		return;
 	}
 
+	#ifdef CEMU_GAMEPAD_EXTENSION
+	for (const auto& source : GetControllersSnapshot())
+		if (source->api() == InputAPI::RemoteGamePad) return;
+	#endif
 	bool pad_view;
 	auto& input_manager = InputManager::instance();
 	if (const auto right_mouse = input_manager.get_right_down_mouse_info(&pad_view))
@@ -638,6 +671,21 @@ bool VPADController::set_default_mapping(const std::shared_ptr<ControllerBase>& 
 		break;
 	}
 #endif
+	#ifdef CEMU_GAMEPAD_EXTENSION
+	case InputAPI::RemoteGamePad:
+	{
+		mapping = {
+			{kButtonId_A, kButton0}, {kButtonId_B, kButton1}, {kButtonId_X, kButton2}, {kButtonId_Y, kButton3},
+			{kButtonId_L, kButton4}, {kButtonId_R, kButton5}, {kButtonId_ZL, kTriggerXP}, {kButtonId_ZR, kTriggerYP},
+			{kButtonId_Plus, kButton6}, {kButtonId_Minus, kButton7}, {kButtonId_Up, kButton8}, {kButtonId_Down, kButton9},
+			{kButtonId_Left, kButton10}, {kButtonId_Right, kButton11}, {kButtonId_StickL, kButton12}, {kButtonId_StickR, kButton13},
+			{kButtonId_Home, kButton14},
+			{kButtonId_StickL_Up, kAxisYP}, {kButtonId_StickL_Down, kAxisYN}, {kButtonId_StickL_Left, kAxisXN}, {kButtonId_StickL_Right, kAxisXP},
+			{kButtonId_StickR_Up, kRotationYP}, {kButtonId_StickR_Down, kRotationYN}, {kButtonId_StickR_Left, kRotationXN}, {kButtonId_StickR_Right, kRotationXP}
+		};
+		break;
+	}
+	#endif
 	case InputAPI::XInput:
 	{
 		mapping =

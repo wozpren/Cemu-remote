@@ -1,0 +1,7 @@
+/build*/
+/host-core/upstream/
+/host-core/deps/
+/out/
+/pairing/
+/logs/
+/config.json

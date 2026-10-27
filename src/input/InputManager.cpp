@@ -40,6 +40,9 @@ InputManager::InputManager()
 #if HAS_DSU
 	create_provider<DSUControllerProvider>();
 #endif
+#ifdef CEMU_GAMEPAD_EXTENSION
+	create_provider<RemoteGamePadProvider>();
+#endif
 #if defined(HAS_GAMECUBE) && HAS_GAMECUBE && defined(HAS_LIBUSB)
 	create_provider<GameCubeControllerProvider>();
 #endif

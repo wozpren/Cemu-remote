@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/LizardByte/Sunshine.git",
+  "commit": "d0b4a88ef727f8dabf80cc970a14739b55c885de",
+  "license": "GPL-3.0-only",
+  "cemu_baseline": "42876aa86d2b92f9c620a76959a792bf392b89d3",
+  "moonlight_common_commit": "04053843c90c4268583f2496b997d54d59f03957",
+  "simple_web_server_commit": "546895a93a29062bb178367b46c7afb72da9881e",
+  "enet_commit": "aca87840b57f045a1f7f9299e4b1b9b8e2a5e2f1",
+  "nanors_commit": "b1e3c22ca0cdc0bb83e3cd6ed1a2fc77869ed99a"
+}

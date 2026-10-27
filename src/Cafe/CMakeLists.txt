@@ -628,6 +628,9 @@ endif()
 set_property(TARGET CemuCafe PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 cemu_use_precompiled_header(CemuCafe)
+if(ENABLE_GAMEPAD_EXTENSION)
+    target_sources(CemuCafe PRIVATE HW/Latte/Renderer/Vulkan/GamePadVulkanBridge.cpp)
+endif()
 
 if (ENABLE_LIBUSB)
   target_sources(CemuCafe PRIVATE

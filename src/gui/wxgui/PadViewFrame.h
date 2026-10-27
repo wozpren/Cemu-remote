@@ -1,6 +1,7 @@
 #pragma once
 
 #include <wx/frame.h>
+#include "WindowedFullscreenFrame.h"
 
 #define WM_CREATE_PAD	(WM_USER+1)
 #define WM_DESTROY_PAD	(WM_USER+2)
@@ -8,7 +9,7 @@
 wxDECLARE_EVENT(EVT_PAD_CLOSE, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SET_WINDOW_TITLE, wxCommandEvent);
 
-class PadViewFrame : public wxFrame
+class PadViewFrame : public WindowedFullscreenFrame
 {
 public:
 	PadViewFrame(wxFrame* parent);

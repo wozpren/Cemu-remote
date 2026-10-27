@@ -118,6 +118,13 @@ endif()
 
 option(ENABLE_OPENGL "Enables the OpenGL backend" ${ENABLE_OPENGL_DEFAULT})
 option(ENABLE_VULKAN "Enables the Vulkan backend" ON)
+option(ENABLE_GAMEPAD_EXTENSION "Enable the independent remote GamePad extension adapter" OFF)
+if(ENABLE_GAMEPAD_EXTENSION)
+    if(NOT WIN32 OR NOT ENABLE_VULKAN OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR "Remote GamePad currently requires Windows x64 and Vulkan")
+    endif()
+    add_compile_definitions(CEMU_GAMEPAD_EXTENSION)
+endif()
 option(ENABLE_METAL "Enables the Metal backend" ${ENABLE_METAL_DEFAULT})
 option(ENABLE_DISCORD_RPC "Enables the Discord Rich Presence feature" ON)
 

@@ -1,4 +1,7 @@
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "GamePadVulkanBridge.h"
+#endif
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/LatteTextureVk.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/RendererShaderVk.h"
@@ -29,6 +32,7 @@
 #include "Cafe/HW/Latte/Core/LatteTiming.h" // vsync control
 
 #include <cstdint>
+#include <bit>
 #include <glslang/Public/ShaderLang.h>
 
 #ifndef VK_API_VERSION_MAJOR
@@ -748,6 +752,10 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 
 	std::vector<const char*> used_extensions;
 	VkDeviceCreateInfo createInfo = CreateDeviceCreateInfo(queueCreateInfos, deviceFeatures, deviceExtensionFeatures, used_extensions);
+#ifdef CEMU_GAMEPAD_EXTENSION
+	VkPhysicalDeviceTimelineSemaphoreFeatures gamepadTimeline{};
+	m_gamepadInteropEnabled = GamePadVulkanBridge::ConfigureDevice(m_instance, m_physicalDevice, createInfo, used_extensions, gamepadTimeline);
+#endif
 
 	VkResult result = vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_logicalDevice);
 	if (result != VK_SUCCESS)
@@ -858,6 +866,9 @@ VulkanRenderer::~VulkanRenderer()
 	SubmitCommandBuffer();
 	WaitDeviceIdle();
 	WaitCommandBufferFinished(GetCurrentCommandBufferId());
+#ifdef CEMU_GAMEPAD_EXTENSION
+	m_gamepadBridge.reset();
+#endif
 	// shut down pipeline save thread
 	m_destructionRequested = true;
 	m_pipeline_cache_semaphore.notify();
@@ -1862,12 +1873,29 @@ void VulkanRenderer::Initialize()
 	CreatePipelineCache();
 	ImguiInit();
 	CreateNullObjects();
+#ifdef CEMU_GAMEPAD_EXTENSION
+	if (m_gamepadInteropEnabled)
+	{
+		try { m_gamepadBridge = std::make_unique<GamePadVulkanBridge>(*this); }
+		catch (const std::exception& ex) { cemuLog_log(LogType::Force, "[Remote GamePad] {}", ex.what()); }
+	}
+#endif
 }
+
+#ifdef CEMU_GAMEPAD_EXTENSION
+void VulkanRenderer::StreamRemoteGamePad(LatteTextureView* source)
+{
+	if (m_gamepadBridge) m_gamepadBridge->Capture(source);
+}
+#endif
 
 void VulkanRenderer::Shutdown()
 {
 	SubmitCommandBuffer();
 	WaitDeviceIdle();
+#ifdef CEMU_GAMEPAD_EXTENSION
+	m_gamepadBridge.reset();
+#endif
 	// stop compilation threads
 	RendererShaderVk::Shutdown();
 	PipelineCompiler::CompileThreadPool_Stop();
@@ -2198,7 +2226,7 @@ void VulkanRenderer::WaitForNextFinishedCommandBuffer()
 	ProcessFinishedCommandBuffers();
 }
 
-void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphore waitSemaphore)
+void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphore waitSemaphore, VkSemaphore externalReady, uint64 externalReadyValue)
 {
 	draw_endRenderPass();
 
@@ -2212,7 +2240,7 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 	submitInfo.pCommandBuffers = &m_state.currentCommandBuffer;
 
 	// signal current command buffer semaphore
-	VkSemaphore signalSemArray[2];
+	VkSemaphore signalSemArray[3];
 	if (signalSemaphore != VK_NULL_HANDLE)
 	{
 		submitInfo.signalSemaphoreCount = 2;
@@ -2223,7 +2251,14 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 	else
 	{
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &m_commandBufferSemaphores[m_commandBufferIndex]; // signal current
+		signalSemArray[0] = m_commandBufferSemaphores[m_commandBufferIndex];
+		submitInfo.pSignalSemaphores = signalSemArray;
+	}
+	uint64 signalValues[3]{};
+	if (externalReady != VK_NULL_HANDLE)
+	{
+		signalSemArray[submitInfo.signalSemaphoreCount] = externalReady;
+		signalValues[submitInfo.signalSemaphoreCount++] = externalReadyValue;
 	}
 
 	// wait for previous command buffer semaphore
@@ -2237,6 +2272,16 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 		waitSemArray[submitInfo.waitSemaphoreCount++] = waitSemaphore;
 	submitInfo.pWaitDstStageMask = semWaitStageMask;
 	submitInfo.pWaitSemaphores = waitSemArray;
+	uint64 waitValues[2]{};
+	VkTimelineSemaphoreSubmitInfo timeline{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+	if (externalReady != VK_NULL_HANDLE)
+	{
+		timeline.waitSemaphoreValueCount = submitInfo.waitSemaphoreCount;
+		timeline.pWaitSemaphoreValues = waitValues;
+		timeline.signalSemaphoreValueCount = submitInfo.signalSemaphoreCount;
+		timeline.pSignalSemaphoreValues = signalValues;
+		submitInfo.pNext = &timeline;
+	}
 
 	const VkResult result = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_cmdBufferFences[m_commandBufferIndex]);
 	if (result != VK_SUCCESS)
@@ -2809,9 +2854,9 @@ VkPipelineShaderStageCreateInfo VulkanRenderer::CreatePipelineShaderStageCreateI
 	return shaderStageInfo;
 }
 
-VkPipeline VulkanRenderer::backbufferBlit_createGraphicsPipeline(VkDescriptorSetLayout descriptorLayout, bool padView, RendererOutputShader* shader)
+VkPipeline VulkanRenderer::backbufferBlit_createGraphicsPipeline(VkDescriptorSetLayout descriptorLayout, bool padView, RendererOutputShader* shader, VkRenderPass targetPass)
 {
-	auto& chainInfo = GetChainInfo(!padView);
+	const auto renderPass = targetPass ? targetPass : GetChainInfo(!padView).m_swapchainRenderPass;
 
 	RendererShaderVk* vertexRendererShader = static_cast<RendererShaderVk*>(shader->GetVertexShader());
 	RendererShaderVk* fragmentRendererShader = static_cast<RendererShaderVk*>(shader->GetFragmentShader());
@@ -2820,6 +2865,7 @@ VkPipeline VulkanRenderer::backbufferBlit_createGraphicsPipeline(VkDescriptorSet
 	hash += (uint64)vertexRendererShader;
 	hash += (uint64)fragmentRendererShader;
 	hash += ((uint64)padView) << 1;
+	hash ^= std::rotl((uint64)renderPass, 17);
 
 	const auto it = m_backbufferBlitPipelineCache.find(hash);
 	if (it != m_backbufferBlitPipelineCache.cend())
@@ -2909,7 +2955,7 @@ VkPipeline VulkanRenderer::backbufferBlit_createGraphicsPipeline(VkDescriptorSet
 	pipelineInfo.pMultisampleState = &multisampling;
 	pipelineInfo.pColorBlendState = &colorBlending;
 	pipelineInfo.layout = m_pipelineLayout;
-	pipelineInfo.renderPass = chainInfo.m_swapchainRenderPass;
+	pipelineInfo.renderPass = renderPass;
 	pipelineInfo.subpass = 0;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 

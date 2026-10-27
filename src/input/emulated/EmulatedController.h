@@ -73,6 +73,11 @@ public:
 	void remove_controller(const std::shared_ptr<ControllerBase>& controller);
 	void clear_controllers();
 	const std::vector<std::shared_ptr<ControllerBase>>& get_controllers() const { return m_controllers; }
+	std::vector<std::shared_ptr<ControllerBase>> GetControllersSnapshot() const
+	{
+		std::shared_lock lock(m_mutex);
+		return m_controllers;
+	}
 
 	bool is_mapping_down(uint64 mapping) const;
 	std::string get_mapping_name(uint64 mapping) const;

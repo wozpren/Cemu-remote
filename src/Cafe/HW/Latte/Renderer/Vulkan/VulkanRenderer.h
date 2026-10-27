@@ -137,11 +137,20 @@ namespace WindowSystem
 	struct WindowHandleInfo;
 };
 
+#ifdef CEMU_GAMEPAD_EXTENSION
+class GamePadVulkanBridge;
+#endif
+
 class VulkanRenderer : public Renderer
 {
 	friend class LatteQueryObjectVk;
 	friend class LatteTextureReadbackInfoVk;
 	friend class PipelineCompiler;
+#ifdef CEMU_GAMEPAD_EXTENSION
+	friend class GamePadVulkanBridge;
+	std::unique_ptr<GamePadVulkanBridge> m_gamepadBridge;
+	bool m_gamepadInteropEnabled{};
+#endif
 
 	using VSync = SwapchainInfoVk::VSync;
 
@@ -235,6 +244,9 @@ public:
 
 	void Initialize() override;
 	void Shutdown() override;
+#ifdef CEMU_GAMEPAD_EXTENSION
+	void StreamRemoteGamePad(LatteTextureView* source);
+#endif
 
 	void SwapBuffers(bool swapTV = true, bool swapDRC = true) override;
 
@@ -249,7 +261,8 @@ public:
 	void InitFirstCommandBuffer();
 	void ProcessFinishedCommandBuffers();
 	void WaitForNextFinishedCommandBuffer();
-	void SubmitCommandBuffer(VkSemaphore signalSemaphore = VK_NULL_HANDLE, VkSemaphore waitSemaphore = VK_NULL_HANDLE);
+	void SubmitCommandBuffer(VkSemaphore signalSemaphore = VK_NULL_HANDLE, VkSemaphore waitSemaphore = VK_NULL_HANDLE,
+	                         VkSemaphore externalReady = VK_NULL_HANDLE, uint64 externalReadyValue = 0);
 	void RequestSubmitSoon();
 	void RequestSubmitOnIdle();
 
@@ -573,7 +586,8 @@ private:
 	// misc
 	void CreatePipelineCache();
 	VkPipelineShaderStageCreateInfo CreatePipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, VkShaderModule& module, const char* entryName) const;
-	VkPipeline backbufferBlit_createGraphicsPipeline(VkDescriptorSetLayout descriptorLayout, bool padView, RendererOutputShader* shader);
+	VkPipeline backbufferBlit_createGraphicsPipeline(VkDescriptorSetLayout descriptorLayout, bool padView, RendererOutputShader* shader,
+	                                               VkRenderPass targetPass = VK_NULL_HANDLE);
 	bool AcquireNextSwapchainImage(bool mainWindow);
 	void RecreateSwapchain(bool mainWindow, bool skipCreate = false);
 

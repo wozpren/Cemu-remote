@@ -3,6 +3,9 @@
 // subwindows
 #include "TitleManager.h"
 #include "GeneralSettings2.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "GamePadStreamingDialog.h"
+#endif
 #include "GameUpdateWindow.h"
 #include "CemuUpdateWindow.h"
 #include "GraphicPacksWindow2.h"
@@ -92,6 +95,7 @@ enum
 	MAINFRAME_MENU_ID_OPTIONS_INPUT,
 	MAINFRAME_MENU_ID_OPTIONS_HOTKEY,
 	MAINFRAME_MENU_ID_OPTIONS_MAC_SETTINGS,
+	MAINFRAME_MENU_ID_OPTIONS_GAMEPAD_STREAMING,
 	// options -> account
 	MAINFRAME_MENU_ID_OPTIONS_ACCOUNT_1 = 20350,
 	MAINFRAME_MENU_ID_OPTIONS_ACCOUNT_12 = 20350 + 11,
@@ -191,6 +195,9 @@ EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_GRAPHIC, MainWindow::OnOptionsInput)
 EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_GRAPHIC_PACKS2, MainWindow::OnOptionsInput)
 EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_GENERAL, MainWindow::OnOptionsInput)
 EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_GENERAL2, MainWindow::OnOptionsInput)
+#ifdef CEMU_GAMEPAD_EXTENSION
+EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_GAMEPAD_STREAMING, MainWindow::OnOptionsInput)
+#endif
 EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_AUDIO, MainWindow::OnOptionsInput)
 EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_INPUT, MainWindow::OnOptionsInput)
 EVT_MENU(MAINFRAME_MENU_ID_OPTIONS_HOTKEY, MainWindow::OnOptionsInput)
@@ -296,7 +303,7 @@ private:
 };
 
 MainWindow::MainWindow()
-	: wxFrame(nullptr, wxID_ANY, GetInitialWindowTitle(), wxDefaultPosition, wxSize(1280, 720), wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxSYSTEM_MENU | wxCAPTION | wxCLOSE_BOX | wxCLIP_CHILDREN | wxRESIZE_BORDER)
+	: WindowedFullscreenFrame(nullptr, wxID_ANY, GetInitialWindowTitle(), wxDefaultPosition, wxSize(1280, 720), wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxSYSTEM_MENU | wxCAPTION | wxCLOSE_BOX | wxCLIP_CHILDREN | wxRESIZE_BORDER)
 {
 #ifdef __WXMAC__
 	// Not necessary to set wxApp::s_macExitMenuItemId as automatically handled
@@ -932,6 +939,11 @@ void MainWindow::OnOptionsInput(wxCommandEvent& event)
 		frame->Destroy();
 		break;
 	}
+#ifdef CEMU_GAMEPAD_EXTENSION
+	case MAINFRAME_MENU_ID_OPTIONS_GAMEPAD_STREAMING:
+		ShowGamePadStreamingSettings(this);
+		break;
+#endif
 
 	case MAINFRAME_MENU_ID_OPTIONS_HOTKEY:
 	{
@@ -1760,15 +1772,25 @@ void MainWindow::SetFullScreen(bool state)
 	}
 	if (state && !m_game_launched)
 		return;
+	// Ignore intermediate size/move events while changing decorations and
+	// placement, so the remembered normal window rectangle remains intact.
+	g_window_info.is_fullscreen = true;
+	if (!ShowFullScreen(state))
+	{
+		g_window_info.is_fullscreen = IsFullScreen();
+		m_fullscreenMenuItem->Check(IsFullScreen());
+		return;
+	}
 	g_window_info.is_fullscreen = state;
 	m_fullscreenMenuItem->Check(state);
-
-	this->ShowFullScreen(state);
-
+#ifdef __WXMSW__
+	SetMenuVisible(!state);
+#else
 	if (state)
-		m_menu_visible = false; // menu gets always disabled by wxFULLSCREEN_NOMENUBAR
+		m_menu_visible = false; // wxWidgets hides the native fullscreen menu.
 	else
 		SetMenuVisible(true);
+#endif
 }
 
 void MainWindow::EndEmulation() // unfinished - memory leaks and crashes after repeated use (after 3x usually)
@@ -2263,6 +2285,9 @@ void MainWindow::RecreateMenu()
 	#endif
 	optionsMenu->Append(MAINFRAME_MENU_ID_OPTIONS_GENERAL2, _("&General settings"));
 	optionsMenu->Append(MAINFRAME_MENU_ID_OPTIONS_INPUT, _("&Input settings"));
+#ifdef CEMU_GAMEPAD_EXTENSION
+	optionsMenu->Append(MAINFRAME_MENU_ID_OPTIONS_GAMEPAD_STREAMING, wxString(L"GamePad \u4e32\u6d41\u8bbe\u7f6e..."));
+#endif
 	optionsMenu->Append(MAINFRAME_MENU_ID_OPTIONS_HOTKEY, _("&Hotkey settings"));
 
 	optionsMenu->AppendSeparator();

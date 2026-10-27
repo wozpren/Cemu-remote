@@ -34,6 +34,9 @@ add_library(CemuInput
 )
 
 set_property(TARGET CemuInput PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(ENABLE_GAMEPAD_EXTENSION)
+    target_sources(CemuInput PRIVATE "${CMAKE_SOURCE_DIR}/extensions/gamepad/adapter/RemoteController.cpp")
+endif()
 
 cemu_use_precompiled_header(CemuInput)
 

@@ -69,6 +69,12 @@ add_executable(CemuBin
 	mainLLE.cpp
 )
 
+if(ENABLE_GAMEPAD_EXTENSION AND MSVC)
+	# Release crash logs contain module offsets. Keep a matching address map
+	# so a driver-facing call can be identified without changing optimization.
+	target_link_options(CemuBin PRIVATE "/MAP:${CMAKE_BINARY_DIR}/CemuGamePad.map")
+endif()
+
 cemu_use_precompiled_header(CemuBin)
 
 if(MSVC AND MSVC_VERSION EQUAL 1940)

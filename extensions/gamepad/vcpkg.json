@@ -1,0 +1,6 @@
+{
+  "name": "cemu-remote-gamepad",
+  "version-string": "0.1.0",
+  "builtin-baseline": "9849e070ad4c3383890fb1c80ae0c54325e2484a",
+  "dependencies": ["boost-filesystem", "boost-asio", "boost-property-tree", "openssl", "nlohmann-json", "opus", "ffnvcodec"]
+}

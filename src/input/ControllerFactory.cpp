@@ -1,4 +1,7 @@
 #include "input/ControllerFactory.h"
+#ifdef CEMU_GAMEPAD_EXTENSION
+#include "RemoteController.h"
+#endif
 
 #include "input/emulated/VPADController.h"
 #include "input/emulated/ProController.h"
@@ -27,6 +30,11 @@ ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::strin
 {
 	switch (api)
 	{
+#ifdef CEMU_GAMEPAD_EXTENSION
+	case InputAPI::RemoteGamePad:
+		if (uuid != "remote:0") throw std::invalid_argument("Invalid remote GamePad UUID");
+		return std::make_shared<RemoteGamePadController>();
+#endif
 #if HAS_KEYBOARD
 	case InputAPI::Keyboard:
 		return std::make_shared<KeyboardController>();
@@ -136,6 +144,10 @@ ControllerProviderPtr ControllerFactory::CreateControllerProvider(InputAPI::Type
 {
 	switch (api)
 	{
+#ifdef CEMU_GAMEPAD_EXTENSION
+	case InputAPI::RemoteGamePad:
+		return std::make_shared<RemoteGamePadProvider>();
+#endif
 #if HAS_KEYBOARD
 	case InputAPI::Keyboard:
 		return std::make_shared<KeyboardControllerProvider>();

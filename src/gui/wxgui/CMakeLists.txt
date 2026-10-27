@@ -92,6 +92,8 @@ add_library(CemuWxGui STATIC
   LoggingWindow.h
   MainWindow.cpp
   MainWindow.h
+  WindowedFullscreenFrame.cpp
+  WindowedFullscreenFrame.h
   MemorySearcherTool.cpp
   MemorySearcherTool.h
   PadViewFrame.cpp
@@ -119,6 +121,15 @@ if (ENABLE_OPENGL)
     canvas/OpenGLCanvas.cpp
     canvas/OpenGLCanvas.h
   )
+endif()
+
+if (ENABLE_GAMEPAD_EXTENSION)
+  target_sources(CemuWxGui PRIVATE GamePadStreamingDialog.cpp GamePadStreamingDialog.h)
+  target_link_libraries(CemuWxGui PRIVATE iphlpapi advapi32 ws2_32)
+  if(MSVC)
+    # Chinese UI strings use UTF-8 regardless of the Windows build machine locale.
+    set_source_files_properties(GamePadStreamingDialog.cpp PROPERTIES COMPILE_OPTIONS /utf-8 SKIP_PRECOMPILE_HEADERS ON)
+  endif()
 endif()
 
 if (ENABLE_VULKAN)

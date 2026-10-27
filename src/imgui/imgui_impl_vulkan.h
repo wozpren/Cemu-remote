@@ -48,6 +48,12 @@ IMGUI_IMPL_API bool     ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, V
 IMGUI_IMPL_API void     ImGui_ImplVulkan_Shutdown();
 IMGUI_IMPL_API void     ImGui_ImplVulkan_NewFrame(VkCommandBuffer command_buffer, VkFramebuffer framebuffer, VkExtent2D extent);
 IMGUI_IMPL_API void     ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer command_buffer);
+#ifdef CEMU_GAMEPAD_EXTENSION
+struct ImGui_ImplVulkan_Offscreen;
+IMGUI_IMPL_API ImGui_ImplVulkan_Offscreen* ImGui_ImplVulkan_CreateOffscreen(VkRenderPass render_pass, uint32_t slots);
+IMGUI_IMPL_API void ImGui_ImplVulkan_RenderOffscreen(ImGui_ImplVulkan_Offscreen* target, uint32_t slot, ImDrawData* data, VkCommandBuffer command);
+IMGUI_IMPL_API void ImGui_ImplVulkan_DestroyOffscreen(ImGui_ImplVulkan_Offscreen* target);
+#endif
 IMGUI_IMPL_API bool     ImGui_ImplVulkan_CreateFontsTexture(VkCommandBuffer command_buffer);
 IMGUI_IMPL_API void     ImGui_ImplVulkan_DestroyFontsTexture();
 IMGUI_IMPL_API void     ImGui_ImplVulkan_DestroyFontUploadObjects();

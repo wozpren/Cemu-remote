@@ -1,5 +1,11 @@
 # **Cemu - Wii U emulator**
 
+> **Experimental Cemu Remote GamePad fork:** this branch adds in-process
+> Moonlight GamePad streaming, a pairing/settings window, and Windows borderless
+> fullscreen. It is maintained separately from the official Cemu project.
+> See the [fork guide](FORK.md), [Chinese usage guide](extensions/gamepad/README.zh-CN.md),
+> and [license notice](LICENSE-NOTICE.md). Runtime acceptance is incomplete.
+
 [![Build Process](https://github.com/cemu-project/Cemu/actions/workflows/build.yml/badge.svg)](https://github.com/cemu-project/Cemu/actions/workflows/build.yml)
 [![Discord](https://img.shields.io/discord/286429969104764928?label=Cemu&logo=discord&logoColor=FFFFFF)](https://discord.gg/5psYsup)
 [![Matrix Server](https://img.shields.io/matrix/cemu:cemu.info?server_fqdn=matrix.cemu.info&label=cemu:cemu.info&logo=matrix&logoColor=FFFFFF)](https://matrix.to/#/#cemu:cemu.info)
