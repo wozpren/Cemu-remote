@@ -4,6 +4,12 @@
 
 本实现按 `docs/gamepad-moonlight-plan.zh-CN.md` 接入真实 DRC 画面、DRC PCM 与 VPAD。当前交付为 **0.1.0 构建候选版**：已在本机完成 Windows x64 Release 构建，生成接入版 Cemu、独立 DLL 和管理工具，并检查导出入口及系统动态库依赖。用户已确认初始化死锁修复后可打开窗口；本轮加入“GamePad 串流设置”界面。GPU、游戏及安卓联调尚未完成，没有 P0–P4 通过记录。
 
+## 最新体感修复（2026-10-28）
+
+当前 ABI 为 **1.1**，更新时必须配套替换 Cemu.exe 与 CemuGamePad.dll。远程体感改为逐份排队积分，并保留游戏要求的角度/方向校准；远程姿态关闭额外零点学习和加速度反馈，原始加速度仍传给游戏。用户已确认《Game & Wario》Arrow 短时连射换箭方向正常，长期漂移、格挡及完整验收尚未确认。日版格挡兼容补丁仅在标题、RPX hash 和指令签名全部匹配时启用。
+
+最终行为、已完成的回放与手机反馈见[体感排查记录](../../docs/game-wario-arrow-gyro.zh-CN.md)。高频诊断受 Input API 日志开关控制，日常使用保持关闭。
+
 ## 范围与结构
 
 首个目标是 Windows x64、Cemu Vulkan、同一 NVIDIA 显卡上的 D3D11/NVENC，以及原版 Android Moonlight。候选设备是 RTX 4070 SUPER / 驱动 617.14；安卓具体系统、Moonlight 版本与输入能力尚待记录。首版协商 H.264 SDR 4:2:0、最多 1920×1080 / 60 fps、双声道 48 kHz Opus、一个客户端。HEVC、AV1、HDR、环绕声和其他 GPU 后端不在本次实现范围。
@@ -12,7 +18,7 @@ Windows 主窗口和独立 GamePad 窗口的全屏操作现在使用普通无边
 
 | 目录 | 内容 |
 | --- | --- |
-| `sdk/` | C ABI 1.0、GPU 租约约定、当前用户管理管道 |
+| `sdk/` | C ABI 1.1、GPU 租约约定、当前用户管理管道 |
 | `adapter/` | Cemu DLL 加载器、直接输入 Provider、运动数据转换 |
 | `plugin/` | 会话生命周期、三槽共享 GPU 资源、D3D11 GPU 转换和 NVENC |
 | `host-core/` | 固定版本协议主机、配对、音频编码、输入与直接网络发送 |

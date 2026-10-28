@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "built_not_runtime_verified",
   "plugin_version": "0.1.0",
-  "abi": "1.0",
+  "abi": "1.1",
   "cemu_commit": "42876aa86d2b92f9c620a76959a792bf392b89d3",
   "sunshine_commit": "d0b4a88ef727f8dabf80cc970a14739b55c885de",
   "backend": "Windows x64 / Vulkan / D3D11 NV12 conversion / NVENC H.264",
@@ -16,7 +16,7 @@
     "compiler": "MSVC 19.51.36260.0",
     "cmake": "4.3.1-msvc1",
     "windows_sdk": "10.0.26100.0",
-    "runtime_verification": "user_reports_stream_working; font_flush_command_buffer_fix_pending_user_retest; Windows_borderless_fullscreen_pending_user_verification; end_to_end_acceptance_pending"
+    "runtime_verification": "user_reports_stream_working; font_flush_command_buffer_fix_pending_user_retest; Windows_borderless_fullscreen_pending_user_verification; Game_Wario_Arrow_gyro_only_short_firing_user_confirmed_2026-10-28; long_term_gyro_drift_and_blocking_pending_user_verification; end_to_end_acceptance_pending"
   },
   "acceptance": {
     "P0": "pending_user_verification",

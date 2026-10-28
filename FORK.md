@@ -15,8 +15,17 @@ The extension is disabled by default. The current backend supports one client,
 H.264 SDR 4:2:0, up to 1920x1080 at 60 fps, and stereo Opus. Hardware acceptance
 records remain empty. A user has observed streaming on an RTX 4070 SUPER, but
 the complete lifecycle, audio/video, input and latency acceptance matrix has
-not passed. Subsequent font-upload and fullscreen changes still need user
-runtime verification. This is source for a development candidate, not a stable release.
+not passed. The latest motion changes passed a short user phone retest of
+Game & Wario Arrow firing: the direction remained correct between arrows.
+Long-term drift, blocking and the complete acceptance matrix remain unverified.
+Subsequent font-upload and fullscreen changes still need user runtime verification.
+This is source for a development candidate, not a stable release.
+
+The motion update requires matching Cemu.exe and CemuGamePad.dll builds with
+ABI 1.1. It preserves received motion samples in a bounded queue, implements
+VPAD angle/direction references and retains gyro-only remote attitude integration
+while still forwarding raw acceleration to the game. See the
+[motion investigation and current status](docs/game-wario-arrow-gyro.zh-CN.md).
 
 ## Build and use
 
