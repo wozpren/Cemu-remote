@@ -2,7 +2,58 @@
 #include "Cafe/OS/RPL/rpl.h"
 #include "Cafe/HW/Espresso/Interpreter/PPCInterpreterInternal.h"
 #include "CafeSystem.h"
+#include "Cafe/OS/libs/vpad/vpad.h"
 #include "config/ActiveSettings.h" // Selectively add some patches based on network settings.
+
+// Observe every actual draw and release, including normal play where the
+// script does not request VPAD calibration. Keep arguments and native calls.
+void gameWario_traceShotState(const char* event)
+{
+    if (!cemuLog_isLoggingEnabled(LogType::InputAPI))
+        return;
+    const uint32 scene = memory_readU32(0x101771e8);
+    const uint32 input = memory_readU32(0x10171700);
+    if (!scene || !input)
+        return;
+    const uint32 bow = scene + 4;
+    std::array<float, 9> direction{};
+    std::array<float, 3> shot{}, angle{}, acc{};
+    for (uint32 i = 0; i < 9; ++i)
+        direction[i] = memory_readFloat(input + 0x80 + i * 4);
+    for (uint32 i = 0; i < 3; ++i)
+    {
+        shot[i] = memory_readFloat(bow + 0x1e48 + i * 4);
+        angle[i] = memory_readFloat(input + 0x58 + i * 4);
+        acc[i] = memory_readFloat(input + 0x30 + i * 4);
+    }
+    cemuLog_log(LogType::InputAPI, "[Game & Wario] {} scene={:08x} mode={} calibration={} touch=[{},{}] acc=[{}] angle=[{}] dir=[{}] shot=[{}]",
+        event, scene, memory_readU32(scene), memory_readU8(scene + 0x2253),
+        memory_readFloat(bow + 0x1e40), memory_readFloat(bow + 0x1e44),
+        fmt::join(acc, ","), fmt::join(angle, ","), fmt::join(direction, ","), fmt::join(shot, ","));
+}
+
+void hleExport_gameWario_traceDraw(PPCInterpreter_t* hCPU)
+{
+    gameWario_traceShotState("Draw begun");
+    hCPU->instructionPointer = 0x022626a0;
+}
+
+void hleExport_gameWario_traceRelease(PPCInterpreter_t* hCPU)
+{
+    gameWario_traceShotState("Arrow released");
+    hCPU->instructionPointer = 0x0225f9e4;
+}
+
+// Arrow recenters at its raised block pose as well as during normal aiming.
+// Keep its angle reset, but preserve the working aiming basis across the block
+// until VPAD's full direction/accelerometer revision behavior is emulated.
+void hleExport_gameWario_resetBlockAngle(PPCInterpreter_t* hCPU)
+{
+	ppcDefineParamStructPtr(channel, sint32be, 0);
+	vpad::VPADSetGyroAngle(*channel, 0.0f, 0.0f, 0.0f);
+	cemuLog_log(LogType::InputAPI, "[Game & Wario] Block angle reset; preserving calibrated aiming direction");
+	osLib_returnFromFunction(hCPU, 0);
+}
 
 void hleExport_breathOfTheWild_busyLoop(PPCInterpreter_t* hCPU)
 {
@@ -516,6 +567,44 @@ void GamePatch_scan()
 		// Reference: https://github.com/PretendoNetwork/Meowth/blob/meowth/src/patcher/patches/webkit_applets.cpp
 		memory_writeU32(hleAddr + 0x28, 0x60000000);
 		memory_writeU32(hleAddr + 0x40, 0x38600001);
+	}
+
+	// This call site was verified against the JP v1 ROM and a motion trace:
+	// resetting direction at the raised block pose caused a persistent 50-70
+	// degree roll after lowering. These compatibility hooks are JP v1 only.
+	if (CafeSystem::GetForegroundTitleId() == 0x0005000010112d00ULL && CafeSystem::GetRPXHashUpdated() == 0x38ede359)
+	{
+        constexpr uint32 drawEvent = 0x02263888;
+        constexpr uint32 releaseEvent = 0x02263b94;
+        if (memory_readU32(drawEvent - 4) == 0x387e0014 &&
+            memory_readU32(drawEvent) == 0x4bffee19 &&
+            memory_readU32(releaseEvent - 4) == 0x389e1e48 &&
+            memory_readU32(releaseEvent) == 0x4bffbe51)
+        {
+            const uint32 drawTrace = PPCInterpreter_makeCallableExportDepr(hleExport_gameWario_traceDraw);
+            const uint32 releaseTrace = PPCInterpreter_makeCallableExportDepr(hleExport_gameWario_traceRelease);
+            memory_writeU32(drawEvent, 0x48000000 | PPC_OPC_LK | PPC_OPC_AA | drawTrace);
+            memory_writeU32(releaseEvent, 0x48000000 | PPC_OPC_LK | PPC_OPC_AA | releaseTrace);
+            cemuLog_log(LogType::Force, "Game & Wario JP: draw/release sensor diagnostics installed (Input API log)");
+        }
+        else
+        {
+            cemuLog_log(LogType::Force, "Game & Wario JP: draw/release diagnostics skipped; instruction signature differs");
+        }
+		constexpr uint32 blockReset = 0x022646c8;
+		if (memory_readU32(blockReset - 12) == 0x38000000 &&
+			memory_readU32(blockReset - 8) == 0x38610014 &&
+			memory_readU32(blockReset - 4) == 0x90010014 &&
+			memory_readU32(blockReset) == 0x4bdc52e9)
+		{
+			const uint32 replacement = PPCInterpreter_makeCallableExportDepr(hleExport_gameWario_resetBlockAngle);
+			memory_writeU32(blockReset, 0x48000000 | PPC_OPC_LK | PPC_OPC_AA | replacement);
+			cemuLog_log(LogType::Force, "Game & Wario JP: preserving Arrow aiming direction across block recenter at 0x{:08x}", blockReset);
+		}
+		else
+		{
+			cemuLog_log(LogType::Force, "Game & Wario JP: block recenter workaround not applied; instruction signature differs");
+		}
 	}
 
 	uint32 hleInstallEnd = GetTickCount();

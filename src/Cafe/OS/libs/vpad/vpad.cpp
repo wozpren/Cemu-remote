@@ -1,6 +1,7 @@
 #include "Cafe/OS/common/OSCommon.h"
 #include "Cafe/HW/Espresso/PPCCallback.h"
 #include "Cafe/OS/libs/vpad/vpad.h"
+#include "Cafe/OS/libs/vpad/VPADGyroReference.h"
 #include "audio/IAudioAPI.h"
 #include "Cafe/OS/libs/coreinit/coreinit_Time.h"
 #include "config/ActiveSettings.h"
@@ -52,7 +53,6 @@ extern bool isLaunchTypeELF;
 
 constinit COSStaticData s_vpadStaticData;
 
-VPADDir g_vpadGyroDirOverwrite[VPAD_MAX_CONTROLLERS];
 uint32 g_vpadGyroZeroDriftMode[VPAD_MAX_CONTROLLERS];
 
 struct VPACGyroDirRevise_t
@@ -199,6 +199,69 @@ namespace vpad
 
 	
 
+	std::mutex s_gyroReferenceMutex;
+	std::array<GyroAngleReference, VPAD_MAX_CONTROLLERS> s_gyroAngles;
+	std::array<GyroDirectionReference, VPAD_MAX_CONTROLLERS> s_gyroDirections;
+	std::array<VPADStatus, VPAD_MAX_CONTROLLERS> s_lastRawGyroSample;
+	std::array<uint32, VPAD_MAX_CONTROLLERS> s_gyroTraceSamples;
+
+	void VPADSetGyroAngle(sint32 channel, float ax, float ay, float az)
+	{
+		if (channel < 0 || channel >= VPAD_MAX_CONTROLLERS)
+			return;
+		std::scoped_lock lock(s_gyroReferenceMutex);
+		s_gyroAngles[channel].SetAngle({ax, ay, az});
+		const auto& raw = s_lastRawGyroSample[channel].gyroOrientation;
+		cemuLog_log(LogType::InputAPI, "[VPAD motion] SetAngle ch={} requested=[{},{},{}] raw_last=[{},{},{}] sample={}",
+			channel, ax, ay, az, float(raw.x), float(raw.y), float(raw.z), s_gyroTraceSamples[channel]);
+	}
+
+	GyroDirectionReference::Matrix GetDirectionMatrix(const VPADDir& direction)
+	{
+		return {direction.x.x, direction.x.y, direction.x.z,
+			direction.y.x, direction.y.y, direction.y.z,
+			direction.z.x, direction.z.y, direction.z.z};
+	}
+
+	void SetGyroDirection(sint32 channel, const VPADDir& direction)
+	{
+		if (channel < 0 || channel >= VPAD_MAX_CONTROLLERS)
+			return;
+		std::scoped_lock lock(s_gyroReferenceMutex);
+		s_gyroDirections[channel].SetDirection(GetDirectionMatrix(direction));
+		cemuLog_log(LogType::InputAPI, "[VPAD motion] SetDirection ch={} requested=[{}] raw_last=[{}] sample={}",
+			channel, fmt::join(GetDirectionMatrix(direction), ","),
+			fmt::join(GetDirectionMatrix(s_lastRawGyroSample[channel].dir), ","), s_gyroTraceSamples[channel]);
+	}
+
+	void ApplyGyroReference(sint32 channel, VPADStatus& status)
+	{
+		if (channel < 0 || channel >= VPAD_MAX_CONTROLLERS)
+			return;
+		std::scoped_lock lock(s_gyroReferenceMutex);
+		s_lastRawGyroSample[channel] = status;
+		const auto angle = s_gyroAngles[channel].Update({status.gyroOrientation.x, status.gyroOrientation.y, status.gyroOrientation.z});
+		status.gyroOrientation.x = angle[0];
+		status.gyroOrientation.y = angle[1];
+		status.gyroOrientation.z = angle[2];
+		const auto direction = s_gyroDirections[channel].Update(GetDirectionMatrix(status.dir));
+		status.dir.x = {direction[0], direction[1], direction[2]};
+		status.dir.y = {direction[3], direction[4], direction[5]};
+		status.dir.z = {direction[6], direction[7], direction[8]};
+		// A throttled trace ties guest recenter requests to the actual pose
+		// returned before and after a block; it is enabled by Input API logging.
+		if (cemuLog_isLoggingEnabled(LogType::InputAPI) && s_gyroTraceSamples[channel] % 6 == 0)
+		{
+			const auto& raw = s_lastRawGyroSample[channel];
+			cemuLog_log(LogType::InputAPI, "[VPAD motion] Sample ch={} n={} acc=[{},{},{}] rate=[{},{},{}] raw_angle=[{},{},{}] angle=[{}] raw_dir=[{}] dir=[{}]",
+				channel, s_gyroTraceSamples[channel], float(raw.acc.x), float(raw.acc.y), float(raw.acc.z),
+				float(raw.gyroChange.x), float(raw.gyroChange.y), float(raw.gyroChange.z),
+				float(raw.gyroOrientation.x), float(raw.gyroOrientation.y), float(raw.gyroOrientation.z),
+				fmt::join(angle, ","), fmt::join(GetDirectionMatrix(raw.dir), ","), fmt::join(direction, ","));
+		}
+		++s_gyroTraceSamples[channel];
+	}
+
 	void VPADSetAccParam(sint32 channel, float radius, float sensitivity)
 	{
 		cemuLog_log(LogType::InputAPI, "VPADSetAccParam({}, {}, {})", channel, radius, sensitivity);
@@ -284,6 +347,9 @@ namespace vpad
 				}
 			}
 			controller->VPADRead(*status, vpad::g_vpad.controller_data[channel].btn_repeat);
+			// Game & Wario's Arrow calibration resets angles between shots and
+			// compares the resulting relative angles before breaking the target.
+			ApplyGyroReference(channel, *status);
 			if (error)
 				*error = VPAD_READ_ERR_NONE;
 			return 1;
@@ -1019,7 +1085,8 @@ void vpadExport_VPADSetGyroDirection(PPCInterpreter_t* hCPU)
 
 	if (channel < VPAD_MAX_CONTROLLERS)
 	{
-		g_vpadGyroDirOverwrite[channel] = *dir;
+		cemuLog_log(LogType::InputAPI, "[VPAD motion] SetDirection caller_lr={:08x} guest_sp={:08x}", uint32(hCPU->spr.LR), hCPU->gpr[1]);
+		vpad::SetGyroDirection(channel, *dir);
 	}
 	else
 	{
@@ -1081,6 +1148,8 @@ void vpadExport_VPADSetGyroDirReviseBase(PPCInterpreter_t* hCPU)
 	if (channel < VPAD_MAX_CONTROLLERS)
 	{
 		g_vpadGyroDirRevise[channel].vpadGyroDirReviseBase = *dir;
+		cemuLog_log(LogType::InputAPI, "[VPAD motion] SetReviseBase ch={} base=[{}] enabled={} weight={}",
+			channel, fmt::join(vpad::GetDirectionMatrix(*dir), ","), g_vpadGyroDirRevise[channel].enabled, g_vpadGyroDirRevise[channel].weight);
 	}
 	else
 	{
@@ -1155,8 +1224,14 @@ namespace vpad
 
 	void SetChannelDefaults(sint32 channel)
 	{
+		{
+			std::scoped_lock lock(s_gyroReferenceMutex);
+			s_gyroAngles[channel] = {};
+			s_gyroDirections[channel] = {};
+			s_lastRawGyroSample[channel] = {};
+			s_gyroTraceSamples[channel] = 0;
+		}
 		g_vpad.controller_data[channel] = {};
-		g_vpadGyroDirOverwrite[channel] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 0.1f}};
 		g_vpadGyroZeroDriftMode[channel] = VPAD_GYRO_ZERODRIFT_STANDARD;
 		g_vpadGyroDirRevise[channel] = {};
 		g_vpadAccParam[channel] = {0, 1};
@@ -1204,6 +1279,7 @@ namespace vpad
 			cafeExportRegister("vpad", VPADSetBtnRepeat, LogType::InputAPI);
 			cafeExportRegister("vpad", VPADSetSamplingCallback, LogType::InputAPI);
 			cafeExportRegister("vpad", VPADRead, LogType::InputAPI);
+			cafeExportRegister("vpad", VPADSetGyroAngle, LogType::InputAPI);
 
 			osLib_addFunction("vpad", "VPADGetAccParam", vpadExport_VPADGetAccParam);
 			osLib_addFunction("vpad", "VPADSetAccParam", vpadExport_VPADSetAccParam);

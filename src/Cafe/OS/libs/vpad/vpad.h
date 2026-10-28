@@ -82,5 +82,6 @@ static_assert(sizeof(VPADStatus) == 0xAC);
 
 namespace vpad
 {
+	void VPADSetGyroAngle(sint32 channel, float ax, float ay, float az);
 	COSModule* GetModule();
 }
