@@ -61,14 +61,15 @@ CgpResult CGP_CALL Audio(CgpInstance* instance, const CgpAudio* audio)
 CgpResult CGP_CALL Input(CgpInstance* instance, CgpInput* state, uint32_t consumer)
 {
     if (!state || state->size < sizeof(CgpInput)) return CGP_INCOMPATIBLE;
-    return Guard(instance, [&](auto& runtime) { *state = runtime.ReadInput(consumer); });
+    const auto result = Guard(instance, [&](auto& runtime) { *state = runtime.ReadInput(consumer); });
+    return result == CGP_OK && consumer == CGP_INPUT_MOTION && !state->connected ? CGP_IDLE : result;
 }
 void CGP_CALL InputOwner(CgpInstance* instance, uint32_t bound)
 {
     Guard(instance, [&](auto& runtime)
     {
         runtime.inputOwned = bound != 0;
-        if (!bound) { std::lock_guard lock(runtime.inputMutex); runtime.edges.clear(); }
+        if (!bound) { std::lock_guard lock(runtime.inputMutex); runtime.edges.clear(); runtime.motionSamples.Clear(); }
     });
 }
 void CGP_CALL OverlayFocus(CgpInstance* instance, uint32_t focus)

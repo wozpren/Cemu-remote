@@ -21,7 +21,9 @@ extern "C" {
 #endif
 
 #define CGP_ABI_MAJOR 1u
-#define CGP_ABI_MINOR 0u
+#define CGP_ABI_MINOR 1u
+#define CGP_INPUT_MOTION 3u
+#define CGP_MAX_MOTION_SAMPLES 512u
 #define CGP_MAX_SLOTS 3u
 #define CGP_CAP_TOUCH 1u
 #define CGP_CAP_GYRO 2u
@@ -122,7 +124,9 @@ typedef struct CgpApi
     CgpResult (CGP_CALL *submit_frame)(CgpInstance *, const CgpFrame *);
     void (CGP_CALL *cancel_frame)(CgpInstance *, const CgpFrame *);
     CgpResult (CGP_CALL *submit_audio)(CgpInstance *, const CgpAudio *);
-    /* consumer: 0 = observe, 1 = VPAD edge consumer, 2 = overlay pointer consumer. */
+    /* consumer: 0 = observe, 1 = VPAD edges, 2 = overlay pointer edges.
+     * ABI 1.1: 3 = consume one motion sample in arrival order, CGP_IDLE if empty.
+     * Motion is independent of button/touch edges; only the bound VPAD consumes it. */
     CgpResult (CGP_CALL *read_input)(CgpInstance *, CgpInput *, uint32_t consumer);
     void (CGP_CALL *set_input_owner)(CgpInstance *, uint32_t bound);
     void (CGP_CALL *set_overlay_focus)(CgpInstance *, uint32_t focus);

@@ -7,7 +7,7 @@
 class MahonySensorFusion
 {
 public:
-	MahonySensorFusion()
+	MahonySensorFusion(bool learnGyroBias = true) : m_learnGyroBias(learnGyroBias)
 	{
 		// assume default forward pose (holding controller in hand, tilted forward so the sticks/buttons face upward)
 		m_imuQ.Assign(sqrtf(0.5), sqrtf(0.5), 0.0f, 0.0f);
@@ -20,7 +20,8 @@ public:
 		Vector3f gv(gx, gy, gz);
 		if (deltaTime > 0.2f)
 			deltaTime = 0.2f; // dont let stutter mess up the internal state
-		updateGyroBias(gx, gy, gz);
+		if (m_learnGyroBias)
+			updateGyroBias(gx, gy, gz);
 		gv.x -= m_gyroBias[0];
 		gv.y -= m_gyroBias[1];
 		gv.z -= m_gyroBias[2];
@@ -44,8 +45,13 @@ public:
 			// apply scaled feedback
 			gv -= errorFeedback;
 		}
+		// Integrate the finite rotation itself. Normalizing an Euler increment
+		// rotates by 2*atan(|gyro|*dt/2), which under-rotates fast samples more
+		// than slow ones and leaves a heading error after unequal-speed returns.
 		gv.Scale(0.5f * deltaTime);
-		m_imuQ += (m_imuQ * Quaternionf(0.0f, gv.x, gv.y, gv.z));
+		const float halfAngle = gv.Length();
+		const float scale = halfAngle < 0.000001f ? 1.0f : std::sin(halfAngle) / halfAngle;
+		m_imuQ *= Quaternionf(std::cos(halfAngle), gv.x * scale, gv.y * scale, gv.z * scale);
 		m_imuQ.NormalizeXYZW();
 		updateOrientationAngles();
 	}
@@ -158,6 +164,7 @@ private:
 		int m_rollWinding{};
 		int m_pitchWinding{};
 		int m_yawWinding{};
+		bool m_learnGyroBias = true;
 		// gyro bias
 		float m_gyroBias[3]{};
 		double m_gyroTotalSum[3]{};

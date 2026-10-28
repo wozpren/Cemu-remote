@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-only
 #include "RemoteController.h"
 #include "RemoteControllerProvider.h"
-#include <numbers>
 
 RemoteGamePadController::RemoteGamePadController() : ControllerBase("remote:0", "Moonlight GamePad")
 {
@@ -18,39 +17,57 @@ ControllerState RemoteGamePadController::raw_state()
     std::lock_guard lock(m_mutex);
     m_input = RemoteGamePad::ReadControllerInput();
     ControllerState state{};
-    if (!m_input.connected) { m_motionTimestamp = 0; return state; }
-    if (m_generation != m_input.generation)
-    {
-        m_generation = m_input.generation;
-        m_motionTimestamp = 0;
-        m_motion = {};
-    }
+    if (!m_input.connected) return state;
     const uint32 masks[] = {0x8000, 0x4000, 0x2000, 0x1000, 0x20, 0x10, 8, 4, 0x200, 0x100, 0x800, 0x400, 0x40000, 0x20000, 2};
     for (uint32 i = 0; i < std::size(masks); ++i) state.buttons.SetButtonState(i, (m_input.buttons & masks[i]) != 0);
     state.axis = {m_input.left_x, m_input.left_y};
     state.rotation = {m_input.right_x, m_input.right_y};
     state.trigger = {m_input.left_trigger, m_input.right_trigger};
-    const uint64 now = RemoteGamePad::Now();
-    const bool gyroFresh = m_input.motion_timestamp_ns && now - m_input.motion_timestamp_ns <= 200000000;
-    const bool accelFresh = m_input.accel_timestamp_ns && now - m_input.accel_timestamp_ns <= 200000000;
-    const uint64 timestamp = std::max(m_input.motion_timestamp_ns, m_input.accel_timestamp_ns);
-    if (timestamp > m_motionTimestamp && (gyroFresh || accelFresh))
-    {
-        if (m_motionTimestamp && timestamp - m_motionTimestamp < 1000000000)
-        {
-            float seconds = float(timestamp - m_motionTimestamp) * 1e-9f;
-            constexpr float toRadians = std::numbers::pi_v<float> / 180.f;
-            // Moonlight follows SDL sensor axes. Match Cemu's SDL conversion,
-            // including gyro rad/s, accelerometer g, and its body-axis signs.
-            // Unsupported or stale components are neutral, with capability
-            // flags still reporting exactly what this client provides.
-            m_motion.processMotionSample(seconds,
-                gyroFresh ? m_input.gyro_x * toRadians : 0, gyroFresh ? -m_input.gyro_y * toRadians : 0, gyroFresh ? -m_input.gyro_z * toRadians : 0,
-                accelFresh ? -m_input.accel_x / 9.80665f : 0, accelFresh ? m_input.accel_y / 9.80665f : 0, accelFresh ? m_input.accel_z / 9.80665f : 0);
-        }
-        m_motionTimestamp = timestamp;
-    }
     return state;
+}
+// The input worker runs independently of guest VPADRead and game pauses.
+// Keep integrating while paused so sensor history cannot build up behind a menu.
+void RemoteGamePadController::update()
+{
+    std::lock_guard lock(m_mutex);
+    const auto input = RemoteGamePad::ReadInput();
+    if (!input.connected) { m_motion = {}; return; }
+    if (m_generation != input.generation)
+    {
+        m_generation = input.generation;
+        m_motion = {};
+        m_motionSamples = m_motionBatches = 0;
+        cemuLog_log(LogType::InputAPI, "[Remote motion] Replaying every received sensor sample, generation={}", m_generation);
+    }
+    uint32 consumed = 0;
+    for (; consumed < CGP_MAX_MOTION_SAMPLES; ++consumed)
+    {
+        const auto sample = RemoteGamePad::ReadInput(CGP_INPUT_MOTION);
+        if (!sample.connected)
+            break;
+        if (sample.generation == m_generation)
+        {
+            m_motion.Process(sample);
+            if (cemuLog_isLoggingEnabled(LogType::InputAPI))
+            {
+                // Retain original packets beside the fusion output. The VPAD
+                // trace alone cannot distinguish sensor bias from corrections.
+                auto motion = m_motion.GetSample();
+                std::array<float, 3> debiased{};
+                std::array<float, 9> direction{};
+                motion.getGyrometer(debiased.data());
+                motion.getVPADAttitudeMatrix(direction.data());
+                cemuLog_log(LogType::InputAPI, "[Remote sensor] generation={} t={} gt={} at={} gyro_deg=[{},{},{}] accel_ms2=[{},{},{}] debiased_rad=[{}] dir=[{}]",
+                    sample.generation, std::max(sample.motion_timestamp_ns, sample.accel_timestamp_ns),
+                    sample.motion_timestamp_ns, sample.accel_timestamp_ns,
+                    sample.gyro_x, sample.gyro_y, sample.gyro_z, sample.accel_x, sample.accel_y, sample.accel_z,
+                    fmt::join(debiased, ","), fmt::join(direction, ","));
+            }
+        }
+    }
+    m_motionSamples += consumed;
+    if (consumed && ++m_motionBatches % 120 == 0)
+        cemuLog_log(LogType::InputAPI, "[Remote motion] samples={} last_batch={} generation={}", m_motionSamples, consumed, m_generation);
 }
 bool RemoteGamePadController::has_motion()
 {
@@ -59,7 +76,7 @@ bool RemoteGamePadController::has_motion()
     return state.connected && ((state.motion_timestamp_ns && now - state.motion_timestamp_ns <= 200000000) ||
                                (state.accel_timestamp_ns && now - state.accel_timestamp_ns <= 200000000));
 }
-MotionSample RemoteGamePadController::get_motion_sample() { std::lock_guard lock(m_mutex); return m_motion.getMotionSample(); }
+MotionSample RemoteGamePadController::get_motion_sample() { std::lock_guard lock(m_mutex); return m_motion.GetSample(); }
 bool RemoteGamePadController::has_position() { auto state = Snapshot(); return state.connected && state.touching; }
 glm::vec2 RemoteGamePadController::get_position() { auto state = Snapshot(); return {state.touch_x, state.touch_y}; }
 bool RemoteGamePadController::has_rumble() { auto state = Snapshot(); return state.connected && (state.capabilities & CGP_CAP_RUMBLE); }

@@ -2,7 +2,7 @@
 #pragma once
 #include "input/api/Controller.h"
 #include "input/api/ControllerProvider.h"
-#include "input/motion/MotionHandler.h"
+#include "RemoteMotion.h"
 #include "GamePadExtension.h"
 
 class RemoteGamePadController final : public ControllerBase
@@ -13,6 +13,7 @@ public:
     std::string_view api_name() const override { return "Remote GamePad"; }
     bool is_connected() override;
     ControllerState raw_state() override;
+    void update() override;
     bool has_motion() override;
     MotionSample get_motion_sample() override;
     bool has_position() override;
@@ -25,6 +26,6 @@ public:
 private:
     mutable std::mutex m_mutex;
     CgpInput m_input{};
-    WiiUMotionHandler m_motion;
-    uint64 m_motionTimestamp{}, m_generation{};
+    RemoteMotion m_motion;
+    uint64 m_generation{}, m_motionSamples{}, m_motionBatches{};
 };

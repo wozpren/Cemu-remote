@@ -475,12 +475,13 @@ void Runtime::ResetInput()
     input.generation = generation;
     edges.clear();
     pointerEdges.clear();
+    motionSamples.Clear();
     feedback.reset();
     clientIdentity.clear();
 }
 void Runtime::UpdateInput(CgpInput state, bool edge)
 {
-    bool overflow{};
+    bool overflow{}, motionOverflow{};
     {
         std::lock_guard lock(inputMutex);
         if (mediaStopped || state.generation != generation) return;
@@ -493,6 +494,8 @@ void Runtime::UpdateInput(CgpInput state, bool edge)
             overflow = pointerEdges.size() >= 256;
             if (!overflow) pointerEdges.push_back(state);
         }
+        if (inputOwned && gameAvailable)
+            motionOverflow = !motionSamples.Push(input, state);
         input = state;
         if (edge && inputOwned)
         {
@@ -500,12 +503,13 @@ void Runtime::UpdateInput(CgpInput state, bool edge)
             if (edges.size() < 256) edges.push_back(state);
         }
     }
+    if (motionOverflow) Error("Remote motion queue overflowed; stopping the session rather than losing angular travel");
     if (overflow) Error("Remote input edge queue overflowed; releasing input and stopping the session");
 }
 CgpInput Runtime::ReadInput(uint32_t consumer)
 {
     std::lock_guard lock(inputMutex);
-    if (consumer == 1 && !inputOwned)
+    if ((consumer == 1 || consumer == CGP_INPUT_MOTION) && !inputOwned)
     {
         CgpInput neutral{};
         neutral.size = sizeof(neutral);
@@ -519,7 +523,10 @@ CgpInput Runtime::ReadInput(uint32_t consumer)
         input.generation = generation;
         edges.clear();
         pointerEdges.clear();
+        motionSamples.Clear();
     }
+    if (consumer == CGP_INPUT_MOTION)
+        return motionSamples.Pop(generation);
     auto state = input;
     if (consumer == 1 && !edges.empty())
     {

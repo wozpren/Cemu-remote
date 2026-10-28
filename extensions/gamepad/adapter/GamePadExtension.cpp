@@ -60,10 +60,10 @@ void Initialize()
         if (!s_module) throw std::runtime_error(fmt::format("cannot load {} (Windows error {})", _pathToUtf8(dll), GetLastError()));
         auto getApi = reinterpret_cast<CgpGetApi>(GetProcAddress(s_module, "CemuGamePad_GetApi"));
         if (!getApi || getApi(CGP_ABI_MAJOR, sizeof(s_api), &s_api) != CGP_OK || s_api.major != CGP_ABI_MAJOR ||
-            s_api.size < sizeof(CgpApi) || !s_api.create || !s_api.destroy || !s_api.attach_device || !s_api.detach_device ||
+            s_api.minor < CGP_ABI_MINOR || s_api.size < sizeof(CgpApi) || !s_api.create || !s_api.destroy || !s_api.attach_device || !s_api.detach_device ||
             !s_api.set_game || !s_api.acquire_frame || !s_api.submit_frame || !s_api.cancel_frame || !s_api.submit_audio ||
             !s_api.read_input || !s_api.set_input_owner || !s_api.set_overlay_focus || !s_api.rumble || !s_api.last_error)
-            throw std::runtime_error("GamePad extension ABI mismatch or incomplete function table");
+            throw std::runtime_error("GamePad extension requires ABI 1.1 motion queue and a complete function table; update CemuGamePad.dll with Cemu.exe");
         CgpHost host{sizeof(CgpHost), CGP_ABI_MAJOR, CGP_ABI_MINOR, nullptr, Clock, Log};
         if (s_api.create(&host, _pathToUtf8(config).c_str(), &s_instance) != CGP_OK || !s_instance)
             throw std::runtime_error("plugin initialization failed; consult the preceding GamePad log");

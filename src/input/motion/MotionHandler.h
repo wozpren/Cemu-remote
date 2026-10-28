@@ -6,6 +6,10 @@
 class WiiUMotionHandler
 {
 public:
+	WiiUMotionHandler() = default;
+	explicit WiiUMotionHandler(bool learnGyroBias, bool correctGravity = true)
+		: m_imu(learnGyroBias), m_correctGravity(correctGravity) {}
+
 	// gyro is in radians/sec
 	void processMotionSample(
 		float deltaTime,
@@ -22,12 +26,19 @@ public:
 		m_acc[1] = accy;
 		m_acc[2] = accz;
 		// integrate acc and gyro samples into IMU
-		m_imu.updateIMU(deltaTime, gx, gy, gz, accx, accy, accz);
+		// Keep the raw accelerometer available to the title even when isolating
+		// gyro-only attitude integration in the remote diagnostic path.
+		m_imu.updateIMU(deltaTime, gx, gy, gz,
+			m_correctGravity ? accx : 0, m_correctGravity ? accy : 0, m_correctGravity ? accz : 0);
 
-		// get orientation from IMU
-		m_orientation[0] = _radToOrientation(-m_imu.getYawRadians()) - 0.50f;
-		m_orientation[1] = _radToOrientation(-m_imu.getPitchRadians()) - 0.50f;
-		m_orientation[2] = _radToOrientation(m_imu.getRollRadians());
+		// VPAD angles integrate body-axis gyro rates, not Euler attitude angles.
+		// Euler axes can exchange roles at large tilts (e.g. Arrow's block pose).
+		// The quaternion supplies the direction matrix using the selected feedback policy.
+		float gyroBias[3];
+		m_imu.getGyroBias(gyroBias);
+		m_orientation[0] += _radToOrientation(-(gx - gyroBias[0])) * deltaTime;
+		m_orientation[1] += _radToOrientation(-(gy - gyroBias[1])) * deltaTime;
+		m_orientation[2] += _radToOrientation(gz - gyroBias[2]) * deltaTime;
 	}
 
 	MotionSample getMotionSample()
@@ -51,6 +62,7 @@ private:
 	}
 
 	MahonySensorFusion m_imu;
+	bool m_correctGravity = true;
 	// state
 	float m_gyro[3]{};
 	float m_acc[3]{};

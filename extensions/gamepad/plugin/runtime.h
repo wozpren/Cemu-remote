@@ -15,6 +15,7 @@
 #include <optional>
 #include <thread>
 #include "gamepad_extension.h"
+#include "MotionInputQueue.h"
 #include "platform/common.h"
 
 namespace cgp
@@ -96,6 +97,7 @@ public:
     std::mutex inputMutex;
     CgpInput input{};
     std::string clientIdentity;
+    MotionInputQueue motionSamples; // Protected by inputMutex, separate from input edges.
     std::deque<CgpInput> edges;
     std::deque<CgpInput> pointerEdges;
     platf::feedback_queue_t feedback;
